@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Chat Backend Test Client</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>AI Chat Backend Test Client</h1>
+        <p>Nest API 기능 검증용 단일 페이지 클라이언트</p>
+      </div>
+      <div class="api-box">
+        <label for="apiBase">API Base</label>
+        <input id="apiBase" type="text" />
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel chat-panel span-2">
+        <div class="panel-head">
+          <h2>Chat</h2>
+          <div class="row compact">
+            <button id="loadMessagesButton" type="button">메시지 불러오기</button>
+            <button id="moreMessagesButton" type="button" class="secondary hidden">이전 100개</button>
+          </div>
+        </div>
+        <div class="selection-grid">
+          <div class="selection">
+            Persona ID: <code id="selectedPersonaId">없음</code>
+          </div>
+          <div class="selection">
+            Session ID: <code id="selectedSessionId">없음</code>
+          </div>
+        </div>
+        <div id="messages" class="messages"></div>
+        <div class="composer">
+          <textarea id="messageContent" rows="3" placeholder="메시지를 입력"></textarea>
+          <button id="sendMessageButton" type="button">전송</button>
+        </div>
+      </section>
+
+      <details class="panel collapsible auth-panel">
+        <summary>Auth</summary>
+        <div class="panel-body">
+          <div class="panel-head">
+            <h2>Auth</h2>
+            <button id="meButton" type="button">내 정보</button>
+          </div>
+          <div class="grid two">
+            <label>
+              ID
+              <input id="authId" type="text" placeholder="jay1" />
+            </label>
+            <label>
+              Password
+              <input id="authPassword" type="password" placeholder="jay12345" />
+            </label>
+          </div>
+          <div class="row">
+            <button id="registerButton" type="button">회원가입</button>
+            <button id="loginButton" type="button">로그인</button>
+            <button id="logoutButton" type="button" class="secondary">로그아웃</button>
+          </div>
+          <div class="token-box">
+            <span>Token</span>
+            <code id="tokenPreview">없음</code>
+          </div>
+        </div>
+      </details>
+
+      <details class="panel collapsible">
+        <summary>User Memories</summary>
+        <div class="panel-body">
+          <div class="panel-head">
+            <h2>User Memories</h2>
+            <button id="loadMemoriesButton" type="button">새로고침</button>
+          </div>
+          <label>
+            Memory
+            <textarea
+              id="memoryContent"
+              rows="3"
+              placeholder="예: 나는 백엔드 개발자이고 MongoDB를 학습 중이다."
+            ></textarea>
+          </label>
+          <button id="createMemoryButton" type="button">메모리 등록</button>
+          <div id="memoryList" class="list"></div>
+        </div>
+      </details>
+
+      <details class="panel collapsible span-2">
+        <summary>Personas</summary>
+        <div class="panel-body">
+          <div class="panel-head">
+            <h2>Personas</h2>
+            <div class="row compact">
+              <input id="personaSearch" type="text" placeholder="name 검색" />
+              <button id="loadPersonasButton" type="button">공개 목록</button>
+            </div>
+          </div>
+          <div class="grid two">
+            <label>
+              Name
+              <input id="personaName" type="text" placeholder="예: Sherlock" />
+            </label>
+            <label>
+              Description
+              <input id="personaDescription" type="text" placeholder="예: 차가운 명탐정" />
+            </label>
+            <label>
+              Profile
+              <textarea
+                id="personaProfile"
+                rows="3"
+                placeholder="예: 런던에서 활동하는 예리한 추리 전문가."
+              ></textarea>
+            </label>
+            <label>
+              Personality
+              <textarea
+                id="personaPersonality"
+                rows="3"
+                placeholder="예: 냉정하고 논리적이며 관찰력이 뛰어남."
+              ></textarea>
+            </label>
+            <label>
+              Speaking Style
+              <textarea
+                id="personaSpeakingStyle"
+                rows="3"
+                placeholder="예: 짧고 단정하게 말하며, 가끔 날카로운 농담을 섞음."
+              ></textarea>
+            </label>
+            <label>
+              Scenario
+              <textarea
+                id="personaScenario"
+                rows="3"
+                placeholder="예: 사용자는 사건 상담을 위해 셜록의 하숙집을 방문했다."
+              ></textarea>
+            </label>
+          </div>
+          <label>
+            Greeting
+            <input
+              id="personaGreeting"
+              type="text"
+              placeholder="예: 어서 오게. 문 앞에서 망설인 이유부터 말해보게."
+            />
+          </label>
+          <label class="check">
+            <input id="personaPublic" type="checkbox" />
+            공개로 생성/전환
+          </label>
+          <div class="row">
+            <button id="createPersonaButton" type="button">페르소나 생성</button>
+            <button id="updatePersonaButton" type="button">선택 페르소나 수정</button>
+            <button id="loadPersonaButton" type="button" class="secondary">선택 단건 조회</button>
+          </div>
+          <div id="personaList" class="list cards"></div>
+        </div>
+      </details>
+
+      <details class="panel collapsible">
+        <summary>Sessions</summary>
+        <div class="panel-body">
+          <div class="panel-head">
+            <h2>Sessions</h2>
+            <button id="loadSessionsButton" type="button">목록</button>
+          </div>
+          <label>
+            Title
+            <input id="sessionTitle" type="text" placeholder="선택값" />
+          </label>
+          <div class="row">
+            <button id="createSessionButton" type="button">세션 생성</button>
+            <button id="loadSessionButton" type="button" class="secondary">선택 단건 조회</button>
+            <button id="deleteSessionButton" type="button" class="secondary">선택 세션 삭제</button>
+          </div>
+          <div id="sessionList" class="list"></div>
+          <button id="moreSessionsButton" type="button" class="secondary hidden">다음 세션</button>
+        </div>
+      </details>
+
+      <details class="panel collapsible">
+        <summary>Stats</summary>
+        <div class="panel-body">
+          <div class="panel-head">
+            <h2>Stats</h2>
+            <button id="loadStatsButton" type="button">조회</button>
+          </div>
+          <div class="grid two">
+            <label>
+              From
+              <input id="statsFrom" type="date" />
+            </label>
+            <label>
+              To
+              <input id="statsTo" type="date" />
+            </label>
+          </div>
+          <pre id="statsOutput" class="output">[]</pre>
+        </div>
+      </details>
+
+      <section class="panel log-panel">
+        <div class="panel-head">
+          <h2>Log</h2>
+          <button id="clearLogButton" type="button" class="secondary">비우기</button>
+        </div>
+        <pre id="logOutput" class="output"></pre>
+      </section>
+    </main>
+
+    <script src="/web/app.js"></script>
+  </body>
+</html>
