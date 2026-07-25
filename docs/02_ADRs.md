@@ -86,6 +86,23 @@ Chizu는 한 사용자-캐릭터 대화 전체를 `AIChat.content` 단일 컬럼
 
 Chizu는 personaId reference 기반으로 최신 페르소나를 조회했다. 본 프로젝트도 reference를 유지하되, 공개 후 잠금 정책으로 캐릭터 일관성 문제를 서비스 규칙에서 해결한다.
 
+### Chizu 비교 — 정정 (2026-07-25, 원본 저장소 재확인)
+
+위 서술의 **필드명이 틀렸다.** `personaId`라는 이름은 Chizu 저장소 어디에도 없다 (`.ts` / `.tsx` / `.prisma` 전수 검색 0건). 실제 FK는 `aiCharacterId`이고 참조 모델명은 `AICharacter`다. 원문은 기록으로 남기고 아래에 정정한다. **ADR-2의 결정과 근거는 바뀌지 않는다.**
+
+```prisma
+// chizu-backend/prisma/schema.prisma:1537-1538
+aiCharacterId String?
+aiCharacter   AICharacter? @relation(fields: [aiCharacterId], references: [id], onDelete: SetNull)
+```
+
+「reference 기반으로 최신 것을 조회했다」는 개념 자체는 코드와 일치한다. 근거 두 가지.
+
+- `chizu-backend/src/graphql/comics/aiChat.resolver.ts:1274` — 필드 리졸버가 매 조회마다 `prisma.aIChat.findUnique({ where: { id: parent.id }, include: { aiCharacter: true } })`로 캐릭터를 join한다. 스냅샷을 읽는 게 아니다.
+- `worldView`는 `AIChat` 행에 컬럼 자체가 없고 `AICharacter`(`schema.prisma:1510`)에만 있다. 캐릭터를 수정하면(`AIChatMutator.ts:838`) 과거 대화에서도 최신 worldView가 조회된다 — 이게 ADR-2가 「공개 후 잠금」으로 막으려는 바로 그 거동이다.
+
+정정 후 문장: **Chizu는 `aiCharacterId`(→ `AICharacter`) FK reference 기반으로 매 조회 시 최신 캐릭터를 join해 가져왔다.**
+
 ---
 
 ## ADR-3: 컨텍스트 윈도우 조회 (Mongo). separate query
@@ -119,6 +136,45 @@ LLM 호출 직전, 컨텍스트로 보낼 최근 N개 메시지를 가져와야 
 ### Chizu 비교
 
 Chizu는 대화를 `AIChat.content` JSON blob으로 저장해 메시지를 행으로 두지 않았고, LLM 컨텍스트는 프론트엔드 LangChain `BufferWindowMemory`가 들고 있었다. 즉 "최근 N개 메시지 조회"라는 쿼리 자체가 없었다. 메시지를 별도 컬렉션으로 분리(ADR-1)하면서 비로소 이 조회가 설계 대상이 됐다.
+
+### Chizu 비교 — 정정 (2026-07-25, 원본 저장소 재확인)
+
+위 서술 중 **「프론트엔드」와 「BufferWindowMemory가 들고 있었다」 두 곳이 부정확했다.** `AIChat.content` JSON blob 저장과 「최근 N개 조회 쿼리가 없었다」는 부분은 맞다. 원문은 기록으로 남기고 아래에 정정한다. **ADR-3의 결정과 근거는 바뀌지 않는다.**
+
+#### 정정 1. 실행 위치는 프론트엔드가 아니라 서버
+
+`chatGenerator.ts`는 `chizu-comics-frontend` 저장소 안에 있지만 경로가 `pages/api/ai/`다. Next.js에서 `pages/api/**`는 브라우저 코드가 아니라 Node 런타임의 서버 API 라우트다.
+
+```ts
+// chizu-comics-frontend/pages/api/ai/chatGenerator.ts:114-117
+export default async function aiChatGenerator(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+```
+
+`export const config`로 edge/브라우저 런타임을 지정한 곳도 없다. 브라우저 쪽 코드는 `useChatAiGenerator.ts`이고 여기서는 `fetch("/api/ai/chatGenerator")`로 호출만 한다 — LangChain 객체를 들고 있지 않다. 저장소 분류(frontend repo)와 실행 위치(server)를 혼동한 서술이었다.
+
+#### 정정 2. 컨텍스트를 실제로 들고 있던 건 메모리가 아니라 클라이언트가 매번 보낸 히스토리
+
+```ts
+// chatGenerator.ts:143-148
+if (!instancesByUUID[ID] || history.length > 0) {
+  if (history.length > 0 && instancesByUUID[ID]) {
+    removeInstanceByID(ID);
+  }
+  await initAIChat(decryptWorldView, history ?? [], seedChat).then(
+```
+
+클라이언트는 매 요청마다 히스토리를 실어 보낸다 (`useChatAiGenerator.ts:36` — `history: chat.content ? JSON.parse(chat.content) : []`). 즉 `history.length > 0`이 거의 항상 참이므로, 기존 인스턴스는 **매 턴 파기되고 다시 만들어진다.** 새 `BufferWindowMemory`는 `history.slice(-16)`(68행)으로 그때그때 다시 채워진다.
+
+따라서 컨텍스트의 실제 보관소는 서버 메모리가 아니라 **DB의 `AIChat.content` blob**이고, `instancesByUUID`는 컨텍스트 저장소가 아니라 히스토리 없이 연속 호출되는 짧은 구간용 성능 캐시에 가깝다. (이 캐시의 한계는 ADR-7에서 별도로 다룬다.)
+
+#### 정정 3. 「최근 N개 조회가 없었다」의 정확한 의미
+
+쿼리가 없던 건 맞지만, 「최근 N개」 개념 자체는 있었다. 위치가 SQL이 아니라 애플리케이션 코드였을 뿐이다 — 한 행에 전체 히스토리가 들어 있으니 `LIMIT`/`ORDER BY`가 성립할 수 없고, 대신 파싱된 배열을 `slice(-16)`한 뒤 `BufferWindowMemory({ k: 8 })`가 다시 8턴으로 줄였다.
+
+정정 후 문장: **Chizu는 대화를 `AIChat.content` 단일 JSON 컬럼에 저장해 메시지를 행으로 두지 않았고, 컨텍스트는 클라이언트가 매 요청 재전송하는 히스토리 blob을 서버 API 라우트(`pages/api/ai/chatGenerator.ts`)에서 `slice(-16)` → `BufferWindowMemory(k=8)`로 잘라 쓰는 방식이었다. DB 레벨의 「최근 N개 메시지 조회」 쿼리는 존재하지 않았다.**
 
 ---
 
