@@ -307,6 +307,61 @@ Chizu에서는 Next.js API route 안에 `Record<chatId, LangChainInstance>` 형�
 
 본 프로젝트는 캐시 단위를 LangChain 인스턴스가 아닌 **메시지 스냅샷**으로 낮추고, 보관 위치를 Redis로 옮겨 두 한계를 동시에 해결한다.
 
+### Chizu 비교 — 정정 (2026-07-25, 원본 저장소 재확인)
+
+위 「Chizu 비교」는 기억에 의존해 작성했다. 이 서술을 이력서에 인용하기 전에 원본 저장소를 다시 열어 코드와 대조한 결과 두 곳이 부정확했다. 원문은 기록으로 남기고 아래에 정정한다. **ADR-7의 결정(C)과 근거는 바뀌지 않는다.**
+
+대조한 파일:
+
+- `chizu-comics-frontend/pages/api/ai/chatGenerator.ts` (재구성 지점)
+- `chizu-comics-frontend/lib/hook/global/ai/useChatAiGenerator.ts` (전송 지점)
+- `chizu-comics-frontend/pages/ai/chat.tsx` (히스토리 출처)
+- `chizu-backend/src/comicsApp/controllers/community/mutators/AIChatMutator.ts` (저장 지점)
+
+#### 정정 1. 메모리 파라미터 오기
+
+`BufferWindowMemory(k=7)`이 아니라 `k: 8`이다. 재구성 시에는 `history.slice(-16)`, 즉 8턴(user/assistant 16건)을 재주입한다. ADR-11의 「Chizu 비교」에도 같은 오기가 있어 함께 정정했다.
+
+#### 정정 2. "수평 확장이 불가능하다"는 과장
+
+핸들러 진입부는 다음과 같다.
+
+```ts
+if (!instancesByUUID[ID] || history.length > 0) {
+  if (history.length > 0 && instancesByUUID[ID]) {
+    removeInstanceByID(ID);
+  }
+  await initAIChat(decryptWorldView, history ?? [], seedChat)...
+```
+
+`history`가 비어 있지 않으면 살아 있던 인스턴스를 **삭제하고 매 요청 재생성**한다. 프론트는 대화 전체를 매 요청 실어 보내므로, 기존 대화방 경로에서는 `history`가 항상 비어 있지 않다. 결과적으로 12시간 TTL 인스턴스 캐시는 그 경로에서 사실상 재사용되지 않았고, 프로세스를 늘려도 응답은 달라지지 않는다.
+
+단일 프로세스 가정이 실제로 걸리는 지점은 **같은 페이지 세션에서 새로 만든 채팅방**(`history = []`) 하나뿐이다. 이 경우에만 대화 맥락이 프로세스 메모리에만 존재한다.
+
+따라서 한계는 실재했지만 **잠재적**이었다. 프론트를 단일 프로세스로 운영했기 때문에 운영 중 발현된 적이 없고, "확장이 막혀 있었다"고 쓰면 지불한 적 없는 비용을 지불한 것처럼 읽힌다.
+
+#### 정정 후 근거 — 실제로 매 턴 지불하던 비용
+
+캐시가 재사용되지 않았다는 사실은 ADR-7의 근거를 약화시키는 대신 다른 근거로 대체한다. 대화 1턴마다 대화 전체가 세 번 움직이고 있었다.
+
+1. **조회.** 백엔드가 대화 전체를 `AIChat.content` 단일 컬럼에 stringify해 보관하고, 조회 시 통째로 반환한다.
+2. **전송.** 프론트가 그 문자열을 파싱해 매 메시지 POST body의 `history`로 다시 직렬화해 보낸다. API route는 그중 뒤 16건만 사용한다. N건을 보내 16건을 쓴다.
+3. **저장.** `saveAIChat`이 매 턴 기존 content를 읽어 parse → concat → stringify → 전량 update 한다. 턴당 O(N) 재작성이다.
+
+단, 무료 구간 경계인 5000 토큰을 넘으면 방별 잔여 토큰(`chatTokenLeft`)이 차감되고 잔량이 0이 되면 대화가 막히므로(`chat.tokenCount > 5000 && chat.chatTokenLeft <= 0`), 이 O(N)들에는 방마다 다른 상한이 있었다. 무한히 커지는 문제는 아니었다.
+
+#### 결론 — ADR-7의 결정은 유지된다
+
+`ctx:{sessionId}` List + N=8 + TTL 60분은 위 세 비용을 각각 없앤다. `LPUSH` + `LTRIM`은 대화 길이와 무관하게 O(1)이라 전량 재작성이 사라지고, 캐시 단위가 메시지 스냅샷이라 miss 시 재적재가 8건 조회로 끝나며, 보관 위치가 프로세스 밖이라 프로세스 수와 무관해진다.
+
+정정 전 근거("확장 불가")보다 정정 후 근거("턴마다 반복되는 O(N) 3종")가 측정 가능하다는 점에서 더 강하다.
+
+#### 부수 확인 사항 (본 프로젝트 설계에는 영향 없음, 기록용)
+
+- 인스턴스를 재생성할 때마다 `setTimeout(..., 12 * 60 * 60 * 1000)`을 새로 걸면서 이전 타이머를 clear하지 않는다. 요청 수만큼 타이머가 누적된다.
+- `saveAIChat` 뮤테이션에 `refetchQueries`가 없고 반환도 스칼라라 Apollo 캐시의 `getAIChatById`가 갱신되지 않는다. 그래서 전송되는 `history`는 **페이지 로드 시점 값에 고정**된다. 재생성이 항상 로드 시점 히스토리로 이뤄지므로, 새로고침 없이 이어간 대화에서는 그 세션 중 주고받은 턴이 모델 메모리에서 빠진다. 화면과 DB에는 남아 있어 드러나기 어려운 종류의 결함이다.
+
+
 ---
 
 ## ADR-8: 같은 세션 동시 메시지. Redis 분산 락
@@ -595,6 +650,6 @@ LangChain의 `BufferWindowMemory`, `LLMChain`, `ChatPromptTemplate`은 위 결�
 
 ### Chizu 비교
 
-Chizu의 채팅 생성기는 LangChain을 사용했다 (`ChatOpenAI`, `BufferWindowMemory(k=7)`, `LLMChain`, `ChatPromptTemplate`). 단일 프로세스 Next.js 환경에서 빠른 프로토타이핑에는 적합했지만, 컨텍스트 캐시 단위가 LangChain 인스턴스에 묶이는 ADR-7의 첫 번째 한계가 여기서 나왔다. 본 프로젝트는 같은 도메인을 직접 다루면서 LangChain을 걷어내고, 메시지 단위 캐시·persistence·prompt 조립을 모두 가시화한다.
+Chizu의 채팅 생성기는 LangChain을 사용했다 (`ChatOpenAI`, `BufferWindowMemory(k=8)`, `LLMChain`, `ChatPromptTemplate`). (초안에 `k=7`로 적었던 것은 오기이며 2026-07-25 원본 저장소 대조로 정정했다. ADR-7의 「Chizu 비교 — 정정」 참고.) 단일 프로세스 Next.js 환경에서 빠른 프로토타이핑에는 적합했지만, 컨텍스트 캐시 단위가 LangChain 인스턴스에 묶이는 ADR-7의 첫 번째 한계가 여기서 나왔다. 본 프로젝트는 같은 도메인을 직접 다루면서 LangChain을 걷어내고, 메시지 단위 캐시·persistence·prompt 조립을 모두 가시화한다.
 
 ---
