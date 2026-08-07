@@ -141,6 +141,7 @@ curl -N -X POST "http://localhost:3000/sessions/$SESSION_ID/messages" \
 - Redis context cache가 비면 MongoDB 인덱스 조회로 fallback 후 Redis를 다시 채우고, Redis read 자체가 실패하면 MongoDB fallback만 수행합니다.
 - Redis hit은 TTL 60분 동안 신뢰하므로 stale cache 가능성이 있습니다. 데이터 정합성은 MongoDB가 보장하고, cache는 짧은 TTL과 이후 write로 자연 해소합니다.
 - 같은 세션의 동시 메시지는 Redis `SET NX EX` 기반 락과 Lua owner 검증 해제로 직렬화합니다.
+- Redis half-open 소켓(배포 재시작·네트워크 파티션·LB idle drop으로 FIN 없이 죽은 연결)은 `socketTimeout` 5초로 바운딩해 fail-fast를 완성합니다. 이 옵션은 **ioredis>=6.0.0 필수** — 5.x는 재연결 시 옛 타이머가 새 연결을 죽이는 #2148 버그가 있어 다운그레이드 금지.
 - LLM 응답은 SSE로 스트리밍하고, assistant placeholder 메시지를 먼저 저장한 뒤 완료 시 final update합니다.
 - 사용자 메모리는 Phase 1에서 명시 등록만 허용하고, 자동 추출은 상황극 오염 위험 때문에 Phase 2로 분리합니다.
 

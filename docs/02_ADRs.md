@@ -489,6 +489,8 @@ end
   - **2차 (필요 시)**: Watchdog 패턴. 락 획득 후 20초마다 `EXPIRE` 갱신. 본 프로젝트는 1차 단순화로 시작, README "개선 여지"에 watchdog 명시
 - 사용자 경험. 429 응답을 받은 클라이언트가 retry해야 함. 백엔드 단순화 vs 클라이언트 복잡도 trade
 - Redis 장애 시 락 자체가 비활성. 이 경우 Mongo unique index fallback 옵션 있지만 본 프로젝트는 단순화 위해 미적용. README "개선 여지"에 명시
+- half-open 소켓 위험. 배포 재시작·네트워크 파티션·LB idle drop으로 FIN 없이 죽은 연결에서는 `maxRetriesPerRequest=1`(close/error 이벤트 기반)이 작동하지 않아 `acquire()`의 `SET NX`가 무한 hang → 503도 못 던지고 요청이 멈춘다. `socketTimeout=5s`로 벽시계 상한을 걸어 fail-fast를 완성한다(Redis 명령은 sub-ms 응답이라 5s는 순수 안전 마진)
+- 단, `socketTimeout`은 **ioredis>=6.0.0에서만 안전**하다. 5.x는 재연결 시 옛 타이머가 새 스트림을 destroy하는 #2148 버그가 있어, 이 옵션을 켠 채 다운그레이드하면 재연결마다 정상 연결을 죽인다. 회귀 테스트 `src/redis/socket-timeout-reconnect.spec.ts`로 고정
 
 ### Chizu 비교
 
