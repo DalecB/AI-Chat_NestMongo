@@ -33,6 +33,7 @@ import { ChatOrchestratorService } from "./chat-orchestrator.service";
 import { CreateMessageDto } from "./dto/create-message.dto";
 import { ListMessagesQueryDto } from "./dto/list-messages-query.dto";
 import { MessageResponse, MessagesService } from "./messages.service";
+import { RateLimit } from "../redis/rate-limit.guard";
 
 class MessageTokenUsageResponse {
   @ApiProperty({ example: 10 })
@@ -127,6 +128,7 @@ export class MessagesController {
 
   // orchestrator의 AsyncGenerator를 SSE로 전달한다.
   // 첫 yield 전까지 헤더 전송을 미뤄, 시작 전 에러는 일반 HTTP 예외로, 시작 후 에러는 SSE error 이벤트로 전달한다.
+  @RateLimit({ name: "message", limit: 20, by: "user" })
   @UseGuards(JwtAuthGuard)
   @Post()
   @ApiOperation({ summary: "Send message and stream assistant response" })

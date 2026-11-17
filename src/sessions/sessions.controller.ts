@@ -31,6 +31,7 @@ import { CreateSessionDto } from './dto/create-session.dto';
 import { ListSessionsQueryDto } from './dto/list-sessions-query.dto';
 import { SessionDocument, SessionTokenUsage } from './schemas/session.schema';
 import { SessionsService } from './sessions.service';
+import { RateLimit } from '../redis/rate-limit.guard';
 
 class SessionTokenUsageResponse {
   @ApiProperty({ example: 10 })
@@ -125,6 +126,7 @@ export class SessionsController {
     return this.toResponse(session);
   }
 
+  @RateLimit({ name: 'session-create', limit: 30, by: 'user' })
   @UseGuards(JwtAuthGuard)
   @Post()
   @ApiOperation({ summary: 'Create session with persona greeting message' })

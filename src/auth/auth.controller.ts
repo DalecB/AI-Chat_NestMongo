@@ -11,6 +11,7 @@ import {
 import { AuthService, AuthTokenResponse, RegisterResponse } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { RateLimit } from '../redis/rate-limit.guard';
 
 class RegisterResponseDto {
   @ApiProperty({ example: '665f0f8f7b1f2a0012345678' })
@@ -30,6 +31,7 @@ class AuthTokenResponseDto {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @RateLimit({ name: 'auth-register', limit: 10, by: 'ip' })
   @Post('register')
   @ApiOperation({ summary: 'Register a user' })
   @ApiCreatedResponse({ type: RegisterResponseDto })
@@ -38,6 +40,7 @@ export class AuthController {
     return this.authService.register(dto.id, dto.password);
   }
 
+  @RateLimit({ name: 'auth-login', limit: 10, by: 'ip' })
   @Post('login')
   @HttpCode(200)
   @ApiOperation({ summary: 'Login and issue JWT access token' })

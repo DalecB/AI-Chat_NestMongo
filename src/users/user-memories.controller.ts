@@ -26,6 +26,7 @@ import { CreateUserMemoryDto } from './dto/create-user-memory.dto';
 import { UserMemoryDocument } from './schemas/user-memory.schema';
 import { UserDocument } from './schemas/user.schema';
 import { UserMemoriesService } from './user-memories.service';
+import { RateLimit } from '../redis/rate-limit.guard';
 
 class UserMemoryResponse {
   @ApiProperty({ example: '665f0f8f7b1f2a0012345678' })
@@ -47,6 +48,7 @@ class UserMemoryResponse {
 export class UserMemoriesController {
   constructor(private readonly userMemoriesService: UserMemoriesService) {}
 
+  @RateLimit({ name: 'memory-create', limit: 30, by: 'user' })
   @UseGuards(JwtAuthGuard)
   @Post()
   @ApiOperation({ summary: 'Create current user memory' })

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
 
@@ -12,6 +16,7 @@ export interface CreateUserMemoryInput {
 @Injectable()
 export class UserMemoriesService {
   private readonly promptMemoryLimit = 20;
+  private readonly maxMemoriesPerUser = 100;
 
   constructor(
     @InjectModel(UserMemory.name)
@@ -19,6 +24,15 @@ export class UserMemoriesService {
   ) {}
 
   async create(input: CreateUserMemoryInput): Promise<UserMemoryDocument> {
+    // 목록 조회(limit 없음)와 저장량의 상한. 동시 요청이 겹치면 몇 개 넘칠 수 있지만 상한 목적에는 충분하다.
+    const count = await this.userMemoryModel
+      .countDocuments({ userId: input.userId })
+      .exec();
+
+    if (count >= this.maxMemoriesPerUser) {
+      throw new BadRequestException("User memory limit reached");
+    }
+
     return this.userMemoryModel.create(input);
   }
 

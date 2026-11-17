@@ -28,6 +28,7 @@ import { FindPersonasQueryDto } from './dto/find-personas-query.dto';
 import { UpdatePersonaDto } from './dto/update-persona.dto';
 import { PersonaDocument } from './schemas/persona.schema';
 import { PersonasService } from './personas.service';
+import { RateLimit } from '../redis/rate-limit.guard';
 
 class PersonaResponse {
   @ApiProperty({ example: '665f0f8f7b1f2a0012345678' })
@@ -71,6 +72,7 @@ class PersonaResponse {
 export class PersonasController {
   constructor(private readonly personasService: PersonasService) {}
 
+  @RateLimit({ name: 'persona-write', limit: 30, by: 'user' })
   @UseGuards(JwtAuthGuard)
   @Post()
   @ApiOperation({ summary: 'Create persona' })
@@ -129,6 +131,7 @@ export class PersonasController {
     return this.toResponse(persona);
   }
 
+  @RateLimit({ name: 'persona-write', limit: 30, by: 'user' })
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
   @ApiOperation({ summary: 'Update owned private persona or publish it' })
