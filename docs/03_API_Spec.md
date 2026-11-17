@@ -8,6 +8,20 @@
 - JWT payload: `{ sub: userObjectId, iat, exp }`
 - 만료: 24시간 (토이라 refresh token 없음)
 - `JwtStrategy`는 `sub`로 User를 재조회한다. 토큰은 유효하지만 DB에 유저가 없으면 401.
+- 서명 알고리즘은 HS256만 허용한다 (sign·verify 양쪽 고정).
+
+### Rate limit
+
+Redis 고정 윈도(60초) 카운터. 초과 시 429 + `Retry-After` 헤더.
+
+| 대상 | 기준 | 한도 |
+|---|---|---|
+| `POST /auth/register`, `POST /auth/login` | IP (`req.ip`) | 10/분 |
+| `POST /sessions/:id/messages` | 사용자 | 20/분 |
+| `POST /personas`, `PATCH /personas/:id`, `POST /sessions`, `POST /users/me/memories` | 사용자 | 30/분 |
+
+- Redis 장애 시 제한을 건너뛴다(fail-open). 메시지 전송은 세션 락이 Redis 장애 시 503으로 막는다.
+- 로드밸런서·프록시 뒤에서는 Express `trust proxy`를 설정해야 클라이언트 IP별로 나뉜다. 설정하지 않으면 모든 요청이 프록시 IP 하나로 묶인다.
 
 ### 인증 플로우
 
@@ -91,6 +105,7 @@ Response 200:
 ### POST /users/me/memories
 
 사용자가 직접 등록하는 전역 메모리. 자동 추출은 Phase 2 범위.
+사용자당 최대 100개. 넘으면 400. 공백뿐인 content는 400.
 
 ```
 Request:
@@ -193,13 +208,13 @@ Request:
 
 ### GET /personas
 
-공개 페르소나 최신순 목록.
+공개 페르소나 최신순 목록. 최신 50개까지 반환한다. 정의되지 않은 쿼리 파라미터는 400.
 
 **관련 인덱스**: `{ isPublic: 1, createdAt: -1 }`
 
 ### GET /personas?name=Sherlock
 
-공개 페르소나 이름 검색. 페이지네이션은 현재 의도적으로 제외.
+공개 페르소나 이름 검색(정확히 일치). 최신 50개까지. `name`은 문자열 1개, 50자 이하. 페이지네이션은 현재 의도적으로 제외.
 
 **관련 인덱스**: `{ isPublic: 1, name: 1, createdAt: -1 }`
 
@@ -215,7 +230,7 @@ Request:
 세션 생성 시 페르소나의 `greetingMessage`를 assistant 메시지로 함께 저장한다.
 
 ```
-Request: { "personaId": "..." }
+Request: { "personaId": "...", "title": "선택, 100자 이하" }
 Response 201:
 {
   "id": "...",
@@ -238,7 +253,7 @@ Response 200: { "items": [...], "nextCursor": "..." }
 
 페이지 크기는 고정 20개. `cursor`는 직전 응답의 마지막 session id다.
 
-**관련 인덱스**: `{ userId: 1, lastMessageAt: -1 }`
+**관련 인덱스**: `{ userId: 1, lastMessageAt: -1, createdAt: -1, _id: -1 }`. cursor tie-break 키까지 포함해 정렬을 인덱스로 처리
 
 ### GET /sessions/:id
 
@@ -246,7 +261,8 @@ Response 200: { "items": [...], "nextCursor": "..." }
 
 ### DELETE /sessions/:id
 
-본인 세션만 삭제 가능하다. 삭제 시 같은 트랜잭션 안에서 해당 세션의 `messages`도 함께 삭제한다.
+본인 세션만 삭제 가능하다. 삭제 시 같은 트랜잭션 안에서 해당 세션의 `messages`도 함께 삭제하고, 커밋 뒤 Redis 컨텍스트 캐시(`ctx:{sessionId}`)를 지운다.
+메시지 전송과 같은 세션 락을 잡는다. 응답 생성 중이면 429, Redis 장애로 락을 못 잡으면 503.
 
 ```
 Response 204
@@ -267,11 +283,12 @@ Response 204
 3. Redis 세션 락 획득
    - `SET lock:session:{sessionId} <ownerId> NX EX 60`
    - 획득 실패 시 429 반환
+   - 락 획득 뒤 Session을 다시 읽는다. 락을 기다리는 사이 삭제됐으면 404, 직전 턴의 stateSummary 갱신도 여기서 반영
 4. user 메시지 Mongo insert
 5. Session.lastMessageAt을 user 메시지 시각으로 갱신
 6. 최근 메시지 8개 조회
    - Redis `LRANGE ctx:{sessionId} 0 7`
-   - cache miss 시 Mongo `{ sessionId, createdAt: -1 }` 조회 후 Redis 갱신. 갱신 실패는 무시.
+   - cache miss 시 Mongo에서 `streamStatus: 'completed'` 메시지만 `{ sessionId, createdAt: -1 }`로 조회 후 Redis 갱신. 갱신 실패는 무시.
    - Redis read 장애 시 Mongo fallback만 수행하고 캐시 갱신은 건너뜀
    - Redis hit은 TTL 60분 동안 사용. stale hit 가능성은 ADR-7에 기록.
    - cache hit에 현재 user 메시지가 없으면 현재 요청에서 append 후 Redis push. 실패는 무시.
@@ -285,7 +302,9 @@ Response 204
     - stream: true
     - stream_options: { include_usage: true }
     - systemPrompt + userMemories + session.stateSummary + recentMessages 사용
+    - `max_completion_tokens` 1024 (`OPENAI_MAX_COMPLETION_TOKENS`), 재시도 없음, 35초 deadline
 12. chunk 이벤트 반복 전송
+    - 클라이언트 연결이 끊기면 다음 이벤트 시점에 중단: LLM 요청 abort, assistant 메시지 `failed`, 락 해제
 13. 스트림 완료 시 assistant 메시지 final update
     - content: 누적 텍스트
     - tokenUsage: 마지막 usage chunk
@@ -293,6 +312,8 @@ Response 204
 14. Session.tokenUsage를 assistant usage 기준으로 $inc
 15. assistant 완료 메시지를 Redis context cache에 push. 실패는 무시.
 16. summaryCursorMessageId 이후 completed 메시지가 `contextWindowSize - 2`개 이상이면 Session.stateSummary 갱신
+    - `max_completion_tokens` 1500 (`OPENAI_SUMMARY_MAX_COMPLETION_TOKENS`), 20초 deadline. 토큰 상한으로 잘린 요약은 저장하지 않음. 4000자로 잘라 저장
+    - 응답 35초 + 요약 20초가 락 TTL 60초 안에 들어오도록 잡은 예산 (ADR-8)
 17. assistant_message_completed / done 이벤트 전송
 18. Lua 스크립트로 락 owner 검증 후 해제
 ```
@@ -333,7 +354,10 @@ async generateStream(
 - Redis 락 획득 불가 → 503
 - Redis 컨텍스트 캐싱 실패 → Mongo fallback 또는 cache write skip 후 계속 진행
 - Redis context stale hit → request는 성공하되 LLM context가 오래될 수 있음. Mongo data integrity에는 영향 없음
-- OpenAI API 에러 → assistant 메시지를 `streamStatus: 'failed'`로 update 후 SSE error 이벤트 전송
+- OpenAI API 에러·deadline 초과 → assistant 메시지를 `streamStatus: 'failed'`로 update 후 SSE error 이벤트 전송
+  - error 이벤트 data는 `{ "message": "LLM stream failed" }`뿐이다. 에러 원문은 서버 로그에만 남긴다
+- 클라이언트 이탈 → assistant 메시지 `failed`, 이벤트 없음
+- 사용자당 분당 20회 초과 → 429 (Rate limit 참고)
 - 마지막 usage chunk를 받지 못하면 tokenUsage는 `{ prompt: 0, completion: 0, total: 0 }`
 
 #### Request / Response
@@ -363,7 +387,7 @@ data: {}
 
 **관련 인덱스**:
 
-- `{ sessionId: 1, createdAt: -1 }`. 최근 메시지 8개 조회
+- `{ sessionId: 1, createdAt: -1, _id: -1 }`. 최근 메시지 8개 조회, 요약 후보 조회
 - `{ userId: 1, createdAt: -1 }`. 사용자 메모리 조회
 
 ---
@@ -396,7 +420,7 @@ Response 200:
 - 정렬: 조회는 최신순 인덱스로 가져오고, 응답은 화면 렌더링을 위해 오래된 메시지 → 최신 메시지 순서
 - 잘못된 cursor 또는 다른 세션의 message id는 400
 
-**관련 인덱스**: `{ sessionId: 1, createdAt: -1 }`
+**관련 인덱스**: `{ sessionId: 1, createdAt: -1, _id: -1 }`. sort `{ createdAt: -1, _id: -1 }`를 인덱스 순서로 처리
 
 ---
 
@@ -404,6 +428,8 @@ Response 200:
 
 ```
 Query: ?from=2026-05-01&to=2026-05-13&groupBy=day
+  - to가 날짜만(YYYY-MM-DD)이면 그날 23:59:59.999Z까지 포함
+  - Date로 해석되지 않는 ISO 형식(주 단위 등)은 400
 Response 200:
 [
   { "_id": "2026-05-13", "totalTokens": 12345, "messageCount": 50 },
@@ -435,11 +461,15 @@ db.messages.aggregate([
 
 ## DTO·Validation
 
-NestJS `class-validator`. 화이트리스트 적용 (`ValidationPipe({ whitelist: true })`).
+NestJS `class-validator`. 화이트리스트 적용 (`ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })`).
+
+- 스키마가 trim하는 문자열(loginId, persona 필드, memory content)은 DTO에서 먼저 trim한 뒤 길이를 검사한다. 공백뿐인 값은 400
+- 가입 비밀번호는 72바이트 이하 (bcrypt가 72바이트 이후를 무시)
+- persona `name`은 한 줄 (system prompt 섹션 위조 방지)
 
 ---
 
 ## Swagger
 
 NestJS `@nestjs/swagger`로 자동 생성.
-`http://localhost:3000/api`.
+`http://localhost:3000/api`. `NODE_ENV=production`이면 노출하지 않는다.

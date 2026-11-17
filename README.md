@@ -44,11 +44,13 @@ npm run start:dev
 curl http://localhost:3000/healthz
 ```
 
-Swagger:
+Swagger (`NODE_ENV=production`이면 노출하지 않음):
 
 ```text
 http://localhost:3000/api
 ```
+
+선택 환경변수: `OPENAI_MAX_COMPLETION_TOKENS`(응답 토큰 상한, 기본 1024), `OPENAI_SUMMARY_MAX_COMPLETION_TOKENS`(요약 토큰 상한, 기본 1500).
 
 테스트 클라이언트:
 
@@ -177,5 +179,5 @@ npm run test:e2e
 - **자동 사용자 메모리 추출**: 상황극 오염 위험이 있어 Phase 2로 분리. Phase 1은 명시 등록만.
 - **Redis lock watchdog**: TTL 60초로 단순화. 장시간 LLM 응답이 잦으면 도입 고려.
 - **Redis lock의 Mongo unique index fallback**: Redis 장애 시 503 fail-fast. fallback은 단순화 위해 미적용.
-- **Rate limiting**: 본 프로젝트 범위 밖. 인프라 레이어 또는 별도 모듈에서 처리하는 것이 적절.
+- **Rate limiting**: Redis 고정 윈도 카운터로 로그인·가입(IP당 10/분), 메시지 전송(사용자당 20/분), 생성 API(사용자당 30/분)만 제한한다. 프록시 뒤 배포 시 Express `trust proxy` 설정이 필요하다. sliding window·전역 제한은 범위 밖.
 - **CI/CD**: 로컬 검증에 집중. 배포 파이프라인은 본 프로젝트 범위 밖.

@@ -283,6 +283,8 @@ pending → streaming → completed
 ### Trade-off
 
 - 클라이언트 중단 시 partial response 손실은 여전. 하지만 "응답이 있었다"는 흔적은 남음
+  - 연결이 끊기면 컨트롤러가 다음 이벤트 시점에 루프를 빠져나가고, generator `return()`이 OpenAI 요청을 abort한다. 미완 placeholder는 `failed`로 확정하고 락을 해제한다. 끊긴 뒤에도 끝까지 생성해 토큰을 쓰던 동작을 막는다
+- deadline(35초)으로 끊긴 스트림은 SDK가 에러 없이 끝내므로 서비스에서 throw해 `failed`로 처리한다. 잘린 응답을 `completed`로 저장하지 않는다
 - streamStatus 상태 머신 추가. 복잡도 증가
 - OpenAI usage 필드가 마지막 청크에 오므로, 클라이언트가 일찍 끊으면 토큰 카운트 0으로 저장될 수 있음. 운영 회고 영역
 
@@ -486,8 +488,10 @@ end
 
 - 락 만료 위험. 스트리밍 응답이 60초를 넘으면 락 만료, 다른 요청이 들어올 수 있음
   - **1차 단순화**: TTL 60초로 시작
+  - **시간 예산**: 락 안의 LLM 호출을 TTL 안에 묶는다. 응답 스트림 35초 + 요약 20초 deadline, `maxRetries: 0`, `max_completion_tokens` 상한. SDK 기본값(timeout 10분, 재시도 2회, retry-after 최대 60초 대기)이면 TTL을 쉽게 넘는다
   - **2차 (필요 시)**: Watchdog 패턴. 락 획득 후 20초마다 `EXPIRE` 갱신. 본 프로젝트는 1차 단순화로 시작, README "개선 여지"에 watchdog 명시
 - 사용자 경험. 429 응답을 받은 클라이언트가 retry해야 함. 백엔드 단순화 vs 클라이언트 복잡도 trade
+- 세션 삭제도 같은 락을 잡는다. 응답 생성 중 삭제는 429. 메시지 전송은 락 획득 뒤 세션을 다시 읽어 삭제된 세션이면 404로 끝낸다 (고아 메시지 방지)
 - Redis 장애 시 락 자체가 비활성. 이 경우 Mongo unique index fallback 옵션 있지만 본 프로젝트는 단순화 위해 미적용. README "개선 여지"에 명시
 - half-open 소켓 위험. 배포 재시작·네트워크 파티션·LB idle drop으로 FIN 없이 죽은 연결에서는 `maxRetriesPerRequest=1`(close/error 이벤트 기반)이 작동하지 않아 `acquire()`의 `SET NX`가 무한 hang → 503도 못 던지고 요청이 멈춘다. `socketTimeout=5s`로 벽시계 상한을 걸어 fail-fast를 완성한다(Redis 명령은 sub-ms 응답이라 5s는 순수 안전 마진)
 - 단, `socketTimeout`은 **ioredis>=6.0.0에서만 안전**하다. 5.x는 재연결 시 옛 타이머가 새 스트림을 destroy하는 #2148 버그가 있어, 이 옵션을 켠 채 다운그레이드하면 재연결마다 정상 연결을 죽인다. 회귀 테스트 `src/redis/socket-timeout-reconnect.spec.ts`로 고정
