@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreateSessionDto {
   @ApiProperty({
@@ -12,8 +12,10 @@ export class CreateSessionDto {
   @ApiPropertyOptional({
     example: '첫 상담',
     description: 'Optional session title.',
+    maxLength: 100,
   })
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   title?: string;
 }

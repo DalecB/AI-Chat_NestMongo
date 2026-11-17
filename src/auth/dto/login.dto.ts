@@ -1,12 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, MaxLength, MinLength } from 'class-validator';
 
+import { Trim } from '../../common/trim';
+
 export class LoginDto {
   @ApiProperty({
     example: 'jay1',
     minLength: 3,
     maxLength: 30,
   })
+  @Trim()
   @IsString()
   @MinLength(3)
   @MaxLength(30)

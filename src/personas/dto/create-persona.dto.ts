@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+
+import { Trim } from '../../common/trim';
 
 export class CreatePersonaDto {
   @ApiProperty({
@@ -7,9 +16,12 @@ export class CreatePersonaDto {
     minLength: 1,
     maxLength: 50,
   })
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(50)
+  // 줄바꿈이 들어가면 system prompt의 섹션(Profile: 등)을 위조할 수 있다.
+  @Matches(/^[^\r\n]*$/, { message: 'name must be a single line' })
   name: string;
 
   @ApiPropertyOptional({
@@ -17,6 +29,7 @@ export class CreatePersonaDto {
     maxLength: 200,
   })
   @IsOptional()
+  @Trim()
   @IsString()
   @MaxLength(200)
   description?: string;
@@ -26,6 +39,7 @@ export class CreatePersonaDto {
     minLength: 1,
     maxLength: 1000,
   })
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(1000)
@@ -36,6 +50,7 @@ export class CreatePersonaDto {
     minLength: 1,
     maxLength: 1000,
   })
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(1000)
@@ -46,6 +61,7 @@ export class CreatePersonaDto {
     minLength: 1,
     maxLength: 1000,
   })
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(1000)
@@ -56,6 +72,7 @@ export class CreatePersonaDto {
     minLength: 1,
     maxLength: 1000,
   })
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(1000)
@@ -66,6 +83,7 @@ export class CreatePersonaDto {
     minLength: 1,
     maxLength: 500,
   })
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(500)

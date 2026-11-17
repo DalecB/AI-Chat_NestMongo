@@ -16,7 +16,6 @@ import {
   ApiOperation,
   ApiParam,
   ApiProperty,
-  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 
@@ -25,6 +24,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { toObjectId } from '../common/mongo/object-id';
 import { UserDocument } from '../users/schemas/user.schema';
 import { CreatePersonaDto } from './dto/create-persona.dto';
+import { FindPersonasQueryDto } from './dto/find-personas-query.dto';
 import { UpdatePersonaDto } from './dto/update-persona.dto';
 import { PersonaDocument } from './schemas/persona.schema';
 import { PersonasService } from './personas.service';
@@ -97,15 +97,12 @@ export class PersonasController {
   @UseGuards(JwtAuthGuard)
   @Get()
   @ApiOperation({ summary: 'List public personas' })
-  @ApiQuery({
-    name: 'name',
-    required: false,
-    description: 'Optional public persona name search.',
-  })
   @ApiOkResponse({ type: PersonaResponse, isArray: true })
-  async findPublic(@Query('name') name?: string): Promise<PersonaResponse[]> {
-    const personas = name
-      ? await this.personasService.findPublicByName(name)
+  async findPublic(
+    @Query() query: FindPersonasQueryDto,
+  ): Promise<PersonaResponse[]> {
+    const personas = query.name
+      ? await this.personasService.findPublicByName(query.name)
       : await this.personasService.findPublicRecent();
 
     return personas.map((persona) => this.toResponse(persona));

@@ -46,12 +46,23 @@ export class StatsController {
     const from = query.from
       ? new Date(query.from)
       : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const to = query.to ? new Date(query.to) : now;
+    const to = query.to ? this.toInclusiveEnd(query.to) : now;
 
     if (from > to) {
       throw new BadRequestException('from must be before to');
     }
 
     return this.messagesService.aggregateTokenStatsByDay(user._id, from, to);
+  }
+
+  // 날짜만 준 to(YYYY-MM-DD)는 그날 00:00Z가 아니라 그날 끝까지 포함한다(API 문서: inclusive).
+  private toInclusiveEnd(to: string): Date {
+    const date = new Date(to);
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return new Date(date.getTime() + 24 * 60 * 60 * 1000 - 1);
+    }
+
+    return date;
   }
 }

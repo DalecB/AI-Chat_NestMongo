@@ -3,20 +3,27 @@ import {
   IsBoolean,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
 
+import { Trim } from '../../common/trim';
+
 export class UpdatePersonaDto {
   @ApiPropertyOptional({ example: 'Sherlock', minLength: 1, maxLength: 50 })
   @IsOptional()
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(50)
+  // 줄바꿈이 들어가면 system prompt의 섹션(Profile: 등)을 위조할 수 있다.
+  @Matches(/^[^\r\n]*$/, { message: 'name must be a single line' })
   name?: string;
 
   @ApiPropertyOptional({ example: '차가운 명탐정', maxLength: 200 })
   @IsOptional()
+  @Trim()
   @IsString()
   @MaxLength(200)
   description?: string;
@@ -27,6 +34,7 @@ export class UpdatePersonaDto {
     maxLength: 1000,
   })
   @IsOptional()
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(1000)
@@ -38,6 +46,7 @@ export class UpdatePersonaDto {
     maxLength: 1000,
   })
   @IsOptional()
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(1000)
@@ -49,6 +58,7 @@ export class UpdatePersonaDto {
     maxLength: 1000,
   })
   @IsOptional()
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(1000)
@@ -60,6 +70,7 @@ export class UpdatePersonaDto {
     maxLength: 1000,
   })
   @IsOptional()
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(1000)
@@ -71,6 +82,7 @@ export class UpdatePersonaDto {
     maxLength: 500,
   })
   @IsOptional()
+  @Trim()
   @IsString()
   @MinLength(1)
   @MaxLength(500)

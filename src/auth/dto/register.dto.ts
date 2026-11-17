@@ -1,5 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { IsByteLength, IsString, MaxLength, MinLength } from 'class-validator';
+
+import { Trim } from '../../common/trim';
 
 export class RegisterDto {
   @ApiProperty({
@@ -8,6 +10,7 @@ export class RegisterDto {
     maxLength: 30,
     description: 'Login id entered by the user.',
   })
+  @Trim()
   @IsString()
   @MinLength(3)
   @MaxLength(30)
@@ -21,5 +24,7 @@ export class RegisterDto {
   @IsString()
   @MinLength(8)
   @MaxLength(100)
+  // bcrypt는 72바이트 이후를 무시한다. 넘으면 뒷부분이 달라도 같은 비밀번호로 통과한다.
+  @IsByteLength(0, 72)
   password: string;
 }
