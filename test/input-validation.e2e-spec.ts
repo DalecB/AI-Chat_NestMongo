@@ -120,6 +120,14 @@ describe("Input validation (e2e)", () => {
   });
 
   describe("stats", () => {
+    it("Date로 해석되지 않는 ISO 형식(주 단위 등) → 400", async () => {
+      const user = await registerAndLogin(ctx);
+      await (await http())
+        .get("/stats/tokens?from=2026-W01")
+        .set("Authorization", `Bearer ${user.accessToken}`)
+        .expect(400);
+    });
+
     it("to가 날짜만이면 그날 전체를 포함", async () => {
       const user = await registerAndLogin(ctx);
       const persona = await createPersona(ctx, user);

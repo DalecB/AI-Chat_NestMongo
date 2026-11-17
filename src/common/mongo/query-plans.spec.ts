@@ -106,6 +106,37 @@ describe("query plans", () => {
     expect(stages).not.toContain("SORT");
   });
 
+  it("요약 후보: 이전 커서 이후($or $gt) asc 정렬도 인덱스로 처리", async () => {
+    const at = new Date();
+    const stages = await winningStages(
+      MessageModel.find({
+        sessionId: new Types.ObjectId(),
+        streamStatus: "completed",
+        $or: [
+          { createdAt: { $gt: at } },
+          { createdAt: at, _id: { $gt: new Types.ObjectId() } },
+        ],
+      })
+        .sort({ createdAt: 1, _id: 1 })
+        .limit(6),
+    );
+
+    expect(stages).not.toContain("SORT");
+  });
+
+  it("요약용 최신 completed 메시지: desc 정렬을 인덱스로 처리", async () => {
+    const stages = await winningStages(
+      MessageModel.find({
+        sessionId: new Types.ObjectId(),
+        streamStatus: "completed",
+      })
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(8),
+    );
+
+    expect(stages).not.toContain("SORT");
+  });
+
   it("세션 목록: userId + lastMessageAt/createdAt/_id desc 정렬을 인덱스로 처리", async () => {
     const stages = await winningStages(
       SessionModel.find({ userId: new Types.ObjectId() })

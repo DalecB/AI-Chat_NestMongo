@@ -48,6 +48,11 @@ export class StatsController {
       : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const to = query.to ? this.toInclusiveEnd(query.to) : now;
 
+    // IsISO8601은 주 단위(2026-W01) 같은 형식도 통과시키지만 Date는 이를 해석하지 못한다.
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new BadRequestException('from/to must be ISO 8601 dates');
+    }
+
     if (from > to) {
       throw new BadRequestException('from must be before to');
     }
