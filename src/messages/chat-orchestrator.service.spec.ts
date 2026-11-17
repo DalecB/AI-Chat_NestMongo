@@ -410,7 +410,7 @@ describe("ChatOrchestratorService.streamMessage", () => {
   });
 
   describe("락 획득 뒤 세션 재확인", () => {
-    it("락을 기다리는 사이 세션이 삭제됐으면 404, 메시지 저장 없이 락 해제", async () => {
+    it("소유권 확인과 락 획득 사이 세션이 삭제됐으면 404, 메시지 저장 없이 락 해제", async () => {
       const bundle = await buildService();
       const ctx = setupHappyPath(bundle);
       bundle.sessions.findOwned!.mockResolvedValue(null);

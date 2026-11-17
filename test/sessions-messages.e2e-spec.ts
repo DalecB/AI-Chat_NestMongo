@@ -206,7 +206,7 @@ describe("Sessions + Messages (e2e)", () => {
       ctx.openAiMock.setStreamPlan({
         kind: "ok",
         chunks: Array.from({ length: 10 }, (_, i) => `c${i}`),
-        chunkDelayMs: 30,
+        chunkDelayMs: 150,
       });
 
       const streaming = postMessageAndCollectSse(ctx, user, sessionId, "msg");

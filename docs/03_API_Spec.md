@@ -283,7 +283,7 @@ Response 204
 3. Redis 세션 락 획득
    - `SET lock:session:{sessionId} <ownerId> NX EX 60`
    - 획득 실패 시 429 반환
-   - 락 획득 뒤 Session을 다시 읽는다. 락을 기다리는 사이 삭제됐으면 404, 직전 턴의 stateSummary 갱신도 여기서 반영
+   - 락 획득 뒤 Session을 다시 읽는다. 소유권 확인과 락 획득 사이 삭제됐으면 404, 직전 턴의 stateSummary 갱신도 여기서 반영
 4. user 메시지 Mongo insert
 5. Session.lastMessageAt을 user 메시지 시각으로 갱신
 6. 최근 메시지 8개 조회

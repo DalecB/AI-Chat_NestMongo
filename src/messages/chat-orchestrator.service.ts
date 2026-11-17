@@ -76,7 +76,7 @@ export class ChatOrchestratorService {
     let assistantSettled = false;
 
     try {
-      // 락을 기다리는 사이 세션이 삭제됐을 수 있고, 직전 턴의 요약 갱신도 락 이후에야 확정된다. 락 안에서 다시 읽는다.
+      // 소유권 확인과 락 획득 사이 세션이 삭제됐을 수 있고, 직전 턴의 요약 갱신도 락 이후에야 확정된다. 락 안에서 다시 읽는다.
       const lockedSession = await this.sessionsService.findOwned(
         sessionId,
         userId,
