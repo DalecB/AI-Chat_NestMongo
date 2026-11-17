@@ -70,7 +70,8 @@ export class Message {
 
 export const MessageSchema = SchemaFactory.createForClass(Message);
 
-// 컨텍스트 윈도우 조회용 (ADR-3, ADR-7). ContextCacheService fallback이 사용한다.
-MessageSchema.index({ sessionId: 1, createdAt: -1 });
+// 컨텍스트 윈도우 조회(ADR-3, ADR-7), 메시지 페이지, 요약 후보 조회용.
+// cursor tie-break 키 _id까지 넣어야 sort {createdAt, _id}가 메모리 SORT로 빠지지 않는다.
+MessageSchema.index({ sessionId: 1, createdAt: -1, _id: -1 });
 // 사용자별 일자별 토큰 통계 aggregation용 (ADR-4).
 MessageSchema.index({ userId: 1, createdAt: -1 });

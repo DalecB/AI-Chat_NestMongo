@@ -69,5 +69,5 @@ export class Session {
 
 export const SessionSchema = SchemaFactory.createForClass(Session);
 
-// 사용자별 세션 목록 정렬용. lastMessageAt 기준이며 cursor에서 createdAt+_id로 tie-break.
-SessionSchema.index({ userId: 1, lastMessageAt: -1 });
+// 사용자별 세션 목록 정렬용. cursor tie-break 키(createdAt, _id)까지 인덱스에 넣어야 정렬이 메모리 SORT로 빠지지 않는다.
+SessionSchema.index({ userId: 1, lastMessageAt: -1, createdAt: -1, _id: -1 });
