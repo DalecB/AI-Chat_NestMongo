@@ -214,12 +214,10 @@ export class ChatOrchestratorService {
         event: "assistant_message_failed",
         data: this.messagesService.toResponse(failedAssistantMessage),
       };
+      // 에러 원문(OpenAI quota·DB 메시지 등)은 서버 로그에만 남긴다.
       yield {
         event: "error",
-        data: {
-          message: "LLM stream failed",
-          detail: errorMessage,
-        },
+        data: { message: "LLM stream failed" },
       };
     } finally {
       // 락 해제는 orchestrator 책임. HTTP 응답 종료는 controller에서 처리.

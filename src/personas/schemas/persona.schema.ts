@@ -61,7 +61,8 @@ export class Persona {
 
   @Prop({
     required: true,
-    maxlength: 6000,
+    // 고정 base prompt(약 2.1K자) + 페르소나 필드 DTO 최대치 합(약 4.1K자)을 담을 수 있어야 한다.
+    maxlength: 8000,
   })
   systemPrompt: string;
 

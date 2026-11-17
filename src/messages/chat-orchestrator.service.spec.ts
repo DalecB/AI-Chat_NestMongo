@@ -361,6 +361,8 @@ describe("ChatOrchestratorService.streamMessage", () => {
       expect(names).toContain("error");
       expect(names).not.toContain("assistant_message_completed");
       expect(names).not.toContain("done");
+      // 내부 에러 원문(LLM·DB 메시지)은 클라이언트로 나가지 않는다
+      expect(JSON.stringify(events)).not.toContain("LLM down");
       expect(bundle.messages.failAssistantMessage).toHaveBeenCalledWith(
         ctx.assistantMessage._id,
       );

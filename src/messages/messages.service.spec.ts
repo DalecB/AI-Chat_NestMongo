@@ -164,6 +164,29 @@ describe("MessagesService", () => {
       expect(recent.map((m) => m.content)).toEqual(["m2", "m3", "m4"]);
     });
 
+    it("failed/streaming assistant 메시지는 컨텍스트에서 제외", async () => {
+      const sessionId = new Types.ObjectId();
+      const userId = new Types.ObjectId();
+      await seedMessage({ sessionId, userId, content: "q1" });
+      await seedMessage({
+        sessionId,
+        userId,
+        role: "assistant",
+        content: "",
+        streamStatus: "failed",
+      });
+      await seedMessage({
+        sessionId,
+        userId,
+        role: "assistant",
+        content: "",
+        streamStatus: "streaming",
+      });
+
+      const recent = await service.findRecentBySession(sessionId, 8);
+      expect(recent.map((m) => m.content)).toEqual(["q1"]);
+    });
+
     it("다른 세션 메시지는 섞이지 않음", async () => {
       const a = new Types.ObjectId();
       const b = new Types.ObjectId();

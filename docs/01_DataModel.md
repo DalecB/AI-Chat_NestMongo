@@ -144,7 +144,7 @@ export class Persona {
   @Prop({ required: true, maxlength: 500 })
   greetingMessage: string;
 
-  @Prop({ required: true, maxlength: 6000 })
+  @Prop({ required: true, maxlength: 8000 })
   systemPrompt: string;
 
   @Prop({ required: true, default: false })
@@ -212,7 +212,7 @@ export class Session {
 
 **인덱스**
 
-- `{ userId: 1, lastMessageAt: -1 }`. 사용자별 최근 세션 목록 조회
+- `{ userId: 1, lastMessageAt: -1, createdAt: -1, _id: -1 }`. 사용자별 최근 세션 목록 조회. cursor tie-break 키까지 포함해 정렬을 인덱스로 처리
 
 ---
 
@@ -258,7 +258,7 @@ export class Message {
 
 **인덱스**
 
-- `{ sessionId: 1, createdAt: -1 }`. 컨텍스트 윈도우 fallback 조회 (ADR-3, ADR-7)
+- `{ sessionId: 1, createdAt: -1, _id: -1 }`. 컨텍스트 윈도우 fallback (ADR-3, ADR-7), 메시지 페이지, 요약 후보 조회. cursor tie-break 키 `_id`까지 포함
 - `{ userId: 1, createdAt: -1 }`. 사용자별 토큰 통계 (Stats API)
 
 ---

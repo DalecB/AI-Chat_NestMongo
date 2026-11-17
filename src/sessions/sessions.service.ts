@@ -12,6 +12,7 @@ import {
   Session,
   SessionDocument,
   SessionTokenUsage,
+  STATE_SUMMARY_MAX_LENGTH,
 } from "./schemas/session.schema";
 
 export interface CreateSessionInput {
@@ -254,8 +255,9 @@ export class SessionsService {
       .updateOne(
         { _id: sessionId },
         {
+          // updateOne은 스키마 maxlength를 검사하지 않는다. LLM 출력이 길어도 프롬프트 비용이 커지지 않도록 자른다.
           $set: {
-            stateSummary,
+            stateSummary: stateSummary.slice(0, STATE_SUMMARY_MAX_LENGTH),
             summaryCursorMessageId,
             summaryUpdatedAt: new Date(),
           },

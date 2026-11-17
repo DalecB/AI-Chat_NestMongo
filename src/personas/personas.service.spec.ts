@@ -72,6 +72,20 @@ describe("PersonasService", () => {
       expect(persona.systemPrompt.length).toBeGreaterThan(0);
       expect(persona.systemPrompt).toContain("테스트 페르소나");
     });
+
+    it("모든 필드가 DTO 최대 길이여도 생성됨 (systemPrompt maxlength 초과 없음)", async () => {
+      const persona = await service.create(
+        baseInput(new Types.ObjectId(), {
+          name: "가".repeat(50),
+          profile: "가".repeat(1000),
+          personality: "가".repeat(1000),
+          speakingStyle: "가".repeat(1000),
+          scenario: "가".repeat(1000),
+        }),
+      );
+
+      expect(persona.systemPrompt.length).toBeGreaterThan(6000);
+    });
   });
 
   describe("updateOwned. 비공개 페르소나 수정", () => {

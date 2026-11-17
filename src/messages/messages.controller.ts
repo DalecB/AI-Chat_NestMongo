@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   Param,
   Post,
   Query,
@@ -85,6 +86,8 @@ class ListMessagesResponse {
 @ApiBearerAuth()
 @Controller("sessions/:sessionId/messages")
 export class MessagesController {
+  private readonly logger = new Logger(MessagesController.name);
+
   constructor(
     private readonly messagesService: MessagesService,
     private readonly sessionsService: SessionsService,
@@ -175,10 +178,12 @@ export class MessagesController {
         throw error;
       }
 
-      this.writeSse(response, "error", {
-        message: "Message stream failed",
-        detail: this.toErrorMessage(error),
-      });
+      // 에러 원문은 서버 로그에만 남긴다.
+      this.logger.error(
+        `Message stream failed. sessionId=${sessionId.toString()}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      this.writeSse(response, "error", { message: "Message stream failed" });
     } finally {
       // 헤더가 나간 응답만 명시적으로 end. 시작 전 응답은 Nest 응답 처리 흐름에 맡긴다.
       if (responseStarted) {
@@ -197,17 +202,5 @@ export class MessagesController {
   private writeSse(response: Response, event: string, data: unknown): void {
     response.write(`event: ${event}\n`);
     response.write(`data: ${JSON.stringify(data)}\n\n`);
-  }
-
-  private toErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-
-    if (typeof error === "string") {
-      return error;
-    }
-
-    return "Unknown error";
   }
 }

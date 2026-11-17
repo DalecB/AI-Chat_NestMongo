@@ -285,6 +285,7 @@ describe("Sessions + Messages (e2e)", () => {
       expect(names).toContain("assistant_message_failed");
       expect(names).toContain("error");
       expect(names).not.toContain("done");
+      expect(JSON.stringify(result.events)).not.toContain("LLM down");
 
       const request = (await import("supertest")).default(
         ctx.app.getHttpServer(),

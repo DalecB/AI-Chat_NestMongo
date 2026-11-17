@@ -3,6 +3,8 @@ import { HydratedDocument, Types } from "mongoose";
 
 export type SessionDocument = HydratedDocument<Session>;
 
+export const STATE_SUMMARY_MAX_LENGTH = 4000;
+
 @Schema({ _id: false })
 export class SessionTokenUsage {
   @Prop({ default: 0 })
@@ -53,7 +55,7 @@ export class Session {
   tokenUsage: SessionTokenUsage;
 
   // 긴 대화 압축용 세션 상태. Persona.scenario는 초기 설정이고, 현재 장소/상황은 stateSummary가 우선한다.
-  @Prop({ type: String, default: null, maxlength: 4000 })
+  @Prop({ type: String, default: null, maxlength: STATE_SUMMARY_MAX_LENGTH })
   stateSummary: string | null;
 
   // 마지막으로 stateSummary에 반영한 message id. 이 커서 이후 completed 메시지가 SUMMARY_INTERVAL 이상 쌓이면 다시 요약한다.

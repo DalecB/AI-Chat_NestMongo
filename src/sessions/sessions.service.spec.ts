@@ -402,5 +402,21 @@ describe("SessionsService", () => {
       expect(reloaded?.summaryCursorMessageId?.equals(cursor)).toBe(true);
       expect(reloaded?.summaryUpdatedAt).not.toBeNull();
     });
+
+    it("스키마 maxlength(4000)를 넘는 요약은 잘라서 저장", async () => {
+      const session = await service.create({
+        userId: new Types.ObjectId(),
+        personaId: new Types.ObjectId(),
+      });
+
+      await service.updateStateSummary(
+        session._id,
+        "가".repeat(5000),
+        new Types.ObjectId(),
+      );
+
+      const reloaded = await service.findById(session._id);
+      expect(reloaded?.stateSummary?.length).toBe(4000);
+    });
   });
 });

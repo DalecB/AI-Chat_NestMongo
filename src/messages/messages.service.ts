@@ -117,8 +117,9 @@ export class MessagesService {
     sessionId: Types.ObjectId,
     limit = CHAT_CONTEXT_WINDOW_SIZE,
   ): Promise<MessageDocument[]> {
+    // 실패·진행 중 assistant placeholder(빈 content)는 컨텍스트에 넣지 않는다. 캐시 경로와 같은 기준.
     const messages = await this.messageModel
-      .find({ sessionId })
+      .find({ sessionId, streamStatus: "completed" })
       .sort({ createdAt: -1 })
       .limit(limit)
       .exec();
