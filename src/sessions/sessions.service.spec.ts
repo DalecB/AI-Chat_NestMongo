@@ -19,6 +19,7 @@ describe("SessionsService", () => {
   beforeAll(async () => {
     mongod = await MongoMemoryReplSet.create({
       replSet: { count: 1, storageEngine: "wiredTiger" },
+      instanceOpts: [{ args: ["--nounixsocket"] }],
     });
     const uri = mongod.getUri();
     await mongoose.connect(uri);

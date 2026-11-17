@@ -10,7 +10,9 @@ export interface InMemoryMongo {
 // Unit-level Mongoose 테스트용 standalone 인메모리 Mongo.
 // transaction이 필요한 경우(SessionsService.deleteOwnedWithMessages)에는 사용 불가 → e2e의 ReplSet 사용.
 export async function startInMemoryMongo(): Promise<InMemoryMongo> {
-  const mongod = await MongoMemoryServer.create();
+  const mongod = await MongoMemoryServer.create({
+    instance: { args: ["--nounixsocket"] },
+  });
   const uri = mongod.getUri();
   await mongoose.connect(uri);
 

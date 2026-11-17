@@ -34,6 +34,7 @@ export async function createE2eApp(): Promise<E2eContext> {
   // ADR-5: deleteOwnedWithMessages가 multi-document transaction을 쓰므로 standalone이 아닌 replica set 필요.
   const mongo = await MongoMemoryReplSet.create({
     replSet: { count: 1, storageEngine: "wiredTiger" },
+    instanceOpts: [{ args: ["--nounixsocket"] }],
   });
   const mongoUri = mongo.getUri();
   const redis = new RedisMock();
