@@ -198,7 +198,7 @@ export class ChatOrchestratorService {
 
       assistantSettled = true;
 
-      await this.sessionsService.addTokenUsage(sessionId, tokenUsage);
+      await this.addSessionTokenUsage(sessionId, tokenUsage);
       await this.contextCacheService.pushMessage(
         sessionId.toString(),
         this.toContextMessage(completedAssistantMessage),
@@ -211,7 +211,8 @@ export class ChatOrchestratorService {
       };
       yield { event: "done", data: {} };
     } catch (error) {
-      if (!assistantMessage) {
+      // 이미 completed로 확정된 답변은 failed로 덮어쓰지 않는다. 컨트롤러가 일반 error 이벤트로 끝낸다.
+      if (!assistantMessage || assistantSettled) {
         throw error;
       }
 
@@ -251,6 +252,21 @@ export class ChatOrchestratorService {
       role: message.role,
       content: message.content,
     };
+  }
+
+  // 세션 tokenUsage는 messages에서 다시 집계할 수 있는 비정규화 값이다(ADR-5).
+  // 저장 실패로 이미 완료된 답변을 실패로 만들지 않는다.
+  private async addSessionTokenUsage(
+    sessionId: Types.ObjectId,
+    tokenUsage: MessageTokenUsage,
+  ): Promise<void> {
+    try {
+      await this.sessionsService.addTokenUsage(sessionId, tokenUsage);
+    } catch (error) {
+      this.logger.warn(
+        `Session token usage not updated. sessionId=${sessionId.toString()} reason=${this.toErrorMessage(error)}`,
+      );
+    }
   }
 
   private async failAbandonedAssistantMessage(

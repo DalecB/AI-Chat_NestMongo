@@ -430,6 +430,37 @@ describe("ChatOrchestratorService.streamMessage", () => {
     });
   });
 
+  describe("완료 후 부가 저장 실패", () => {
+    it("토큰 집계 저장이 실패해도 완료된 답변은 failed로 바뀌지 않고 done까지 간다", async () => {
+      const bundle = await buildService();
+      const ctx = setupHappyPath(bundle);
+      bundle.openAi.generateStream!.mockResolvedValue(
+        makeStreamChunks(["hello"], { p: 1, c: 1, t: 2 })(),
+      );
+      bundle.sessions.addTokenUsage!.mockRejectedValue(new Error("mongo write failed"));
+      bundle.messages.failAssistantMessage!.mockResolvedValue({
+        ...ctx.assistantMessage,
+        streamStatus: "failed",
+      });
+
+      const { events, error } = await collectEvents(
+        bundle.service.streamMessage({
+          sessionId: ctx.sessionId,
+          userId: ctx.userId,
+          content: "hi",
+        }),
+      );
+
+      expect(error).toBeNull();
+      const names = events.map((e) => e.event);
+      expect(names).toContain("assistant_message_completed");
+      expect(names.at(-1)).toBe("done");
+      expect(names).not.toContain("assistant_message_failed");
+      expect(bundle.messages.failAssistantMessage).not.toHaveBeenCalled();
+      expect(bundle.lock.release).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("클라이언트 이탈 (generator.return)", () => {
     function closableStream() {
       const state = { closed: false };
