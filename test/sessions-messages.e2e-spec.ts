@@ -1,3 +1,6 @@
+import { request as httpRequest } from "http";
+import { AddressInfo } from "net";
+
 import {
   closeE2eApp,
   createE2eApp,
@@ -260,6 +263,78 @@ describe("Sessions + Messages (e2e)", () => {
         sessionId: new Types.ObjectId(sessionId),
       });
       expect(count).toBe(3);
+    });
+  });
+
+  describe("클라이언트 이탈", () => {
+    it("스트림 도중 연결을 끊으면 LLM 스트림 중단, assistant failed, 락 해제", async () => {
+      const user = await registerAndLogin(ctx);
+      const persona = await createPersona(ctx, user);
+      const sessionId = await createSession(ctx, user, persona.id);
+      ctx.openAiMock.setStreamPlan({
+        kind: "ok",
+        chunks: Array.from({ length: 50 }, (_, i) => `c${i}`),
+        chunkDelayMs: 20,
+      });
+
+      const server = ctx.app.getHttpServer().listen(0);
+      const { port } = server.address() as AddressInfo;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const req = httpRequest(
+            {
+              port,
+              method: "POST",
+              path: `/sessions/${sessionId}/messages`,
+              headers: {
+                Authorization: `Bearer ${user.accessToken}`,
+                "Content-Type": "application/json",
+              },
+            },
+            (res) => {
+              res.once("data", () => {
+                // 첫 SSE 데이터를 받자마자 클라이언트가 떠난다
+                req.destroy();
+                resolve();
+              });
+            },
+          );
+          req.on("error", (error) => {
+            if ((error as NodeJS.ErrnoException).code !== "ECONNRESET") {
+              reject(error);
+            }
+          });
+          req.end(JSON.stringify({ content: "hi" }));
+        });
+
+        const deadline = Date.now() + 5000;
+        while (ctx.openAiMock.streamState.closedEarly === 0 && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        expect(ctx.openAiMock.streamState.closedEarly).toBe(1);
+
+        const request = (await import("supertest")).default(server);
+        let lastAssistant: { streamStatus: string } | undefined;
+        while (Date.now() < deadline) {
+          const list = await request
+            .get(`/sessions/${sessionId}/messages`)
+            .set("Authorization", `Bearer ${user.accessToken}`)
+            .expect(200);
+          lastAssistant = list.body.items.at(-1);
+          if (lastAssistant?.streamStatus === "failed") {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        expect(lastAssistant?.streamStatus).toBe("failed");
+
+        // 락이 풀려 바로 다음 메시지를 보낼 수 있다
+        ctx.openAiMock.setStreamPlan({ kind: "ok", chunks: ["again"] });
+        const next = await postMessageAndCollectSse(ctx, user, sessionId, "next");
+        expect(next.events.map((e) => e.event)).toContain("done");
+      } finally {
+        await new Promise((resolve) => server.close(resolve));
+      }
     });
   });
 

@@ -72,6 +72,8 @@ export class ChatOrchestratorService {
     // 권한 검증 통과 후 락 점유. 인증되지 않은 요청이 락 키를 차지하지 않도록.
     const lock = await this.sessionLockService.acquire(sessionId.toString());
     let assistantMessage: MessageDocument | null = null;
+    // placeholder가 completed/failed로 확정됐는지. 클라이언트 이탈(return)로 끝나면 finally에서 failed로 확정한다.
+    let assistantSettled = false;
 
     try {
       const userMessage = await this.messagesService.create({
@@ -184,6 +186,8 @@ export class ChatOrchestratorService {
           tokenUsage,
         );
 
+      assistantSettled = true;
+
       await this.sessionsService.addTokenUsage(sessionId, tokenUsage);
       await this.contextCacheService.pushMessage(
         sessionId.toString(),
@@ -209,6 +213,7 @@ export class ChatOrchestratorService {
 
       const failedAssistantMessage =
         await this.messagesService.failAssistantMessage(assistantMessage._id);
+      assistantSettled = true;
 
       yield {
         event: "assistant_message_failed",
@@ -220,6 +225,11 @@ export class ChatOrchestratorService {
         data: { message: "LLM stream failed" },
       };
     } finally {
+      // 여기서 yield하면 return() 중인 generator가 멈춰 락이 TTL까지 남는다. yield 없이 정리만 한다.
+      if (assistantMessage && !assistantSettled) {
+        await this.failAbandonedAssistantMessage(assistantMessage);
+      }
+
       // 락 해제는 orchestrator 책임. HTTP 응답 종료는 controller에서 처리.
       await this.releaseLock(lock);
     }
@@ -231,6 +241,18 @@ export class ChatOrchestratorService {
       role: message.role,
       content: message.content,
     };
+  }
+
+  private async failAbandonedAssistantMessage(
+    assistantMessage: MessageDocument,
+  ): Promise<void> {
+    try {
+      await this.messagesService.failAssistantMessage(assistantMessage._id);
+    } catch (error) {
+      this.logger.warn(
+        `Abandoned assistant message not marked failed. assistantMessageId=${assistantMessage._id.toString()} reason=${this.toErrorMessage(error)}`,
+      );
+    }
   }
 
   private async releaseLock(lock: SessionLock): Promise<void> {

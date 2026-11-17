@@ -407,6 +407,69 @@ describe("ChatOrchestratorService.streamMessage", () => {
     });
   });
 
+  describe("클라이언트 이탈 (generator.return)", () => {
+    function closableStream() {
+      const state = { closed: false };
+      const stream = (async function* () {
+        try {
+          for (let i = 0; i < 100; i += 1) {
+            yield { choices: [{ delta: { content: `c${i}` } }] };
+          }
+        } finally {
+          state.closed = true;
+        }
+      })();
+      return { state, stream };
+    }
+
+    it("스트리밍 중 이탈 → LLM 스트림 정리, placeholder failed, 락 해제", async () => {
+      const bundle = await buildService();
+      const ctx = setupHappyPath(bundle);
+      const { state, stream } = closableStream();
+      bundle.openAi.generateStream!.mockResolvedValue(stream);
+
+      const generator = bundle.service.streamMessage({
+        sessionId: ctx.sessionId,
+        userId: ctx.userId,
+        content: "hi",
+      });
+      for await (const event of generator) {
+        if (event.event === "chunk") {
+          break;
+        }
+      }
+
+      expect(state.closed).toBe(true);
+      expect(bundle.messages.completeAssistantMessage).not.toHaveBeenCalled();
+      expect(bundle.messages.failAssistantMessage).toHaveBeenCalledWith(
+        ctx.assistantMessage._id,
+      );
+      expect(bundle.lock.release).toHaveBeenCalledTimes(1);
+    });
+
+    it("완료 이벤트 이후 이탈은 completed 메시지를 failed로 바꾸지 않음", async () => {
+      const bundle = await buildService();
+      const ctx = setupHappyPath(bundle);
+      bundle.openAi.generateStream!.mockResolvedValue(
+        makeStreamChunks(["hello"], { p: 1, c: 1, t: 2 })(),
+      );
+
+      const generator = bundle.service.streamMessage({
+        sessionId: ctx.sessionId,
+        userId: ctx.userId,
+        content: "hi",
+      });
+      for await (const event of generator) {
+        if (event.event === "assistant_message_completed") {
+          break;
+        }
+      }
+
+      expect(bundle.messages.failAssistantMessage).not.toHaveBeenCalled();
+      expect(bundle.lock.release).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("락 해제 (ADR-8)", () => {
     it("성공 경로에서 finally release", async () => {
       const bundle = await buildService();

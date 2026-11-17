@@ -164,6 +164,13 @@ export class MessagesController {
       });
 
       for await (const streamEvent of events) {
+        // 클라이언트가 끊겼으면 중단한다. break가 generator.return()을 불러 LLM 스트림 abort,
+        // 미완 placeholder failed 처리, 락 해제를 generator의 finally에서 실행한다.
+        // request의 'close'는 body를 다 읽으면 바로 발생하므로 response 상태를 본다.
+        if (response.destroyed) {
+          break;
+        }
+
         if (!responseStarted) {
           this.setSseHeaders(response);
           responseStarted = true;

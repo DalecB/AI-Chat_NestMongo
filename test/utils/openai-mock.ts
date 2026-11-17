@@ -24,6 +24,8 @@ export type StreamPlan =
       kind: "ok";
       chunks: string[];
       usage?: { prompt: number; completion: number; total: number };
+      // 청크 사이 지연. 클라이언트 이탈처럼 스트림 도중 상황을 만들 때 쓴다.
+      chunkDelayMs?: number;
     }
   | {
       kind: "throw";
@@ -34,6 +36,7 @@ export type StreamPlan =
 export interface OpenAiMock {
   readonly streamCalls: StreamCallCapture[];
   readonly summaryCalls: SummaryCallCapture[];
+  readonly streamState: { closedEarly: number };
   setStreamPlan(plan: StreamPlan): void;
   setSummaryResponse(summary: string): void;
   setSummaryError(error: Error): void;
@@ -64,6 +67,7 @@ export function createOpenAiMock(): OpenAiMock {
   };
   const streamCalls: StreamCallCapture[] = [];
   const summaryCalls: SummaryCallCapture[] = [];
+  const streamState = { closedEarly: 0 };
 
   function makeChunk(content: string): ChatCompletionChunk {
     return {
@@ -109,6 +113,7 @@ export function createOpenAiMock(): OpenAiMock {
   return {
     streamCalls,
     summaryCalls,
+    streamState,
     setStreamPlan(plan) {
       streamPlan = plan;
     },
@@ -121,6 +126,7 @@ export function createOpenAiMock(): OpenAiMock {
     reset() {
       streamCalls.length = 0;
       summaryCalls.length = 0;
+      streamState.closedEarly = 0;
       streamPlan = { kind: "ok", chunks: ["hello"] };
       summaryMode = {
         kind: "ok",
@@ -155,12 +161,26 @@ export function createOpenAiMock(): OpenAiMock {
           throw plan.error;
         }
 
-        for (const content of plan.chunks) {
-          yield makeChunk(content);
-        }
+        let finished = false;
+        try {
+          for (const content of plan.chunks) {
+            if (plan.chunkDelayMs) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, plan.chunkDelayMs),
+              );
+            }
+            yield makeChunk(content);
+          }
 
-        if (plan.usage) {
-          yield makeUsageChunk(plan.usage);
+          if (plan.usage) {
+            yield makeUsageChunk(plan.usage);
+          }
+          finished = true;
+        } finally {
+          // 실제 SDK는 소비자가 중간에 끊으면(return) HTTP 요청을 abort한다.
+          if (!finished) {
+            streamState.closedEarly += 1;
+          }
         }
       }
 
