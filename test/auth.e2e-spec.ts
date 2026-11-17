@@ -190,6 +190,21 @@ describe("Auth (e2e)", () => {
         .expect(401);
     });
 
+    it("HS256이 아닌 알고리즘으로 서명된 토큰 → 401", async () => {
+      const user = await registerAndLogin(ctx);
+      const otherAlg = ctx.jwtService.sign(
+        { sub: user.id },
+        { algorithm: "HS512" },
+      );
+      const request = (await import("supertest")).default(
+        ctx.app.getHttpServer(),
+      );
+      await request
+        .get("/sessions")
+        .set("Authorization", `Bearer ${otherAlg}`)
+        .expect(401);
+    });
+
     it("만료된 토큰 → 401", async () => {
       const user = await registerAndLogin(ctx);
       const expired = ctx.jwtService.sign(

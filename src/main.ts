@@ -19,15 +19,21 @@ async function bootstrap() {
     }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('AI Chat Backend')
-    .setDescription('NestJS + MongoDB + Redis AI character chat backend')
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .build();
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api', app, document);
+  // 운영에서는 API 지도를 공개하지 않는다.
+  if (configService.get<string>('NODE_ENV') !== 'production') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('AI Chat Backend')
+      .setDescription('NestJS + MongoDB + Redis AI character chat backend')
+      .setVersion('0.1.0')
+      .addBearerAuth()
+      .build();
+
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api', app, document);
+  }
+
   app.use('/web', express.static(join(process.cwd(), 'public', 'web')));
 
   const port = configService.get<number>('PORT', 3000);
