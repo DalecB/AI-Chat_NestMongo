@@ -35,6 +35,8 @@ export interface UpdatePersonaInput {
 
 @Injectable()
 export class PersonasService {
+  private readonly publicListLimit = 50;
+
   constructor(
     @InjectModel(Persona.name) private readonly personaModel: Model<Persona>,
   ) {}
@@ -131,10 +133,14 @@ export class PersonasService {
       .exec();
   }
 
+  // 공개 목록은 모든 사용자의 공개 페르소나라 limit이 없으면 데이터와 함께 응답이 무한히 커진다.
+  // systemPrompt(최대 8K자)는 응답에 쓰지 않으므로 읽지 않는다.
   async findPublicRecent(): Promise<PersonaDocument[]> {
     return this.personaModel
       .find({ isPublic: true })
+      .select("-systemPrompt")
       .sort({ createdAt: -1 })
+      .limit(this.publicListLimit)
       .exec();
   }
 
@@ -145,7 +151,9 @@ export class PersonasService {
   async findPublicByName(name: string): Promise<PersonaDocument[]> {
     return this.personaModel
       .find({ isPublic: true, name })
+      .select("-systemPrompt")
       .sort({ createdAt: -1 })
+      .limit(this.publicListLimit)
       .exec();
   }
 }

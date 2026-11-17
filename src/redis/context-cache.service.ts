@@ -57,6 +57,14 @@ export class ContextCacheService {
     }
   }
 
+  async clear(sessionId: string): Promise<void> {
+    try {
+      await this.redis.del(this.key(sessionId));
+    } catch {
+      // TTL(1시간) 뒤 사라진다. 삭제된 세션 키라 다시 읽히지 않는다.
+    }
+  }
+
   private async replace(
     sessionId: string,
     messages: ContextMessage[],

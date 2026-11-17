@@ -8,6 +8,8 @@ import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
 
 import { Message, MessageDocument } from "../messages/schemas/message.schema";
+import { ContextCacheService } from "../redis/context-cache.service";
+import { SessionLockService } from "../redis/session-lock.service";
 import {
   Session,
   SessionDocument,
@@ -43,6 +45,8 @@ export class SessionsService {
   constructor(
     @InjectModel(Session.name) private readonly sessionModel: Model<Session>,
     @InjectModel(Message.name) private readonly messageModel: Model<Message>,
+    private readonly sessionLockService: SessionLockService,
+    private readonly contextCacheService: ContextCacheService,
   ) {}
 
   async create(input: CreateSessionInput): Promise<SessionDocument> {
@@ -113,22 +117,32 @@ export class SessionsService {
     userId: Types.ObjectId,
   ): Promise<void> {
     const session = await this.findOwnedOrThrow(sessionId, userId);
-    const mongoSession = await this.sessionModel.db.startSession();
+    // 응답 생성 중에 지우면 진행 중인 스트림이 고아 메시지를 남긴다. 메시지 전송과 같은 락으로 직렬화한다
+    // (생성 중이면 429). 소유권 확인 뒤에 잡아 남의 세션 락을 점유하지 못하게 한다.
+    const lock = await this.sessionLockService.acquire(sessionId.toString());
 
     try {
-      await mongoSession.withTransaction(async () => {
-        await this.messageModel
-          .deleteMany({ sessionId: session._id })
-          .session(mongoSession)
-          .exec();
+      const mongoSession = await this.sessionModel.db.startSession();
 
-        await this.sessionModel
-          .deleteOne({ _id: session._id, userId })
-          .session(mongoSession)
-          .exec();
-      });
+      try {
+        await mongoSession.withTransaction(async () => {
+          await this.messageModel
+            .deleteMany({ sessionId: session._id })
+            .session(mongoSession)
+            .exec();
+
+          await this.sessionModel
+            .deleteOne({ _id: session._id, userId })
+            .session(mongoSession)
+            .exec();
+        });
+      } finally {
+        await mongoSession.endSession();
+      }
+
+      await this.contextCacheService.clear(sessionId.toString());
     } finally {
-      await mongoSession.endSession();
+      await this.sessionLockService.release(lock);
     }
   }
 

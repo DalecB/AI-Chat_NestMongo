@@ -199,6 +199,40 @@ describe("Sessions + Messages (e2e)", () => {
   });
 
   describe("세션 삭제 cascade", () => {
+    it("응답 생성 중 DELETE → 429, 끝난 뒤 DELETE → 204 + 컨텍스트 캐시 삭제", async () => {
+      const user = await registerAndLogin(ctx);
+      const persona = await createPersona(ctx, user);
+      const sessionId = await createSession(ctx, user, persona.id);
+      ctx.openAiMock.setStreamPlan({
+        kind: "ok",
+        chunks: Array.from({ length: 10 }, (_, i) => `c${i}`),
+        chunkDelayMs: 30,
+      });
+
+      const streaming = postMessageAndCollectSse(ctx, user, sessionId, "msg");
+      while (ctx.openAiMock.streamCalls.length === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      const request = (await import("supertest")).default(
+        ctx.app.getHttpServer(),
+      );
+      await request
+        .delete(`/sessions/${sessionId}`)
+        .set("Authorization", `Bearer ${user.accessToken}`)
+        .expect(429);
+
+      const finished = await streaming;
+      expect(finished.events.map((e) => e.event)).toContain("done");
+      expect(await ctx.redis.exists(`ctx:${sessionId}`)).toBe(1);
+
+      await request
+        .delete(`/sessions/${sessionId}`)
+        .set("Authorization", `Bearer ${user.accessToken}`)
+        .expect(204);
+      expect(await ctx.redis.exists(`ctx:${sessionId}`)).toBe(0);
+    });
+
     it("DELETE /sessions/:id → 세션 + messages 모두 삭제 (transaction)", async () => {
       const user = await registerAndLogin(ctx);
       const persona = await createPersona(ctx, user);

@@ -231,5 +231,21 @@ describe("PersonasService", () => {
       const names = list.map((p) => p.name).sort();
       expect(names).toEqual(["공개1", "공개2"]);
     });
+
+    it("공개 목록은 최신 50개까지, 응답에 쓰지 않는 systemPrompt는 읽지 않음", async () => {
+      const owner = new Types.ObjectId();
+      for (let i = 0; i < 55; i += 1) {
+        await service.create(
+          baseInput(owner, { name: `공개${i}`, isPublic: true }),
+        );
+      }
+
+      const recent = await service.findPublicRecent();
+      expect(recent).toHaveLength(50);
+      expect(recent.every((p) => p.systemPrompt === undefined)).toBe(true);
+
+      const byName = await service.findPublicByName("공개0");
+      expect(byName[0].systemPrompt).toBeUndefined();
+    });
   });
 });

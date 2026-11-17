@@ -76,6 +76,16 @@ export class ChatOrchestratorService {
     let assistantSettled = false;
 
     try {
+      // 락을 기다리는 사이 세션이 삭제됐을 수 있고, 직전 턴의 요약 갱신도 락 이후에야 확정된다. 락 안에서 다시 읽는다.
+      const lockedSession = await this.sessionsService.findOwned(
+        sessionId,
+        userId,
+      );
+
+      if (!lockedSession) {
+        throw new NotFoundException("Session not found");
+      }
+
       const userMessage = await this.messagesService.create({
         sessionId,
         userId,
@@ -159,7 +169,7 @@ export class ChatOrchestratorService {
           role: message.role,
           content: message.content,
         })),
-        { userMemories, sessionSummary: session.stateSummary },
+        { userMemories, sessionSummary: lockedSession.stateSummary },
       );
 
       for await (const chunk of stream) {
@@ -193,7 +203,7 @@ export class ChatOrchestratorService {
         sessionId.toString(),
         this.toContextMessage(completedAssistantMessage),
       );
-      await this.updateSessionSummaryIfNeeded(session);
+      await this.updateSessionSummaryIfNeeded(lockedSession);
 
       yield {
         event: "assistant_message_completed",

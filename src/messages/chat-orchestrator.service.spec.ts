@@ -54,6 +54,7 @@ async function buildService(): Promise<MockBundle> {
   };
   const sessions = {
     findOwnedOrThrow: jest.fn(),
+    findOwned: jest.fn(),
     touchMessageAt: jest.fn().mockResolvedValue(undefined),
     addTokenUsage: jest.fn().mockResolvedValue(undefined),
     findSummaryCandidates: jest
@@ -140,6 +141,7 @@ function setupHappyPath(bundle: MockBundle) {
   };
 
   bundle.sessions.findOwnedOrThrow!.mockResolvedValue(session);
+  bundle.sessions.findOwned!.mockResolvedValue(session);
   bundle.personas.findAccessibleById!.mockResolvedValue(persona);
   bundle.lock.acquire!.mockResolvedValue({ key: "lock:session:x", ownerId: "uuid-1" });
   bundle.messages.create!
@@ -404,6 +406,27 @@ describe("ChatOrchestratorService.streamMessage", () => {
 
       expect(error).toBeInstanceOf(HttpException);
       expect(bundle.messages.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("락 획득 뒤 세션 재확인", () => {
+    it("락을 기다리는 사이 세션이 삭제됐으면 404, 메시지 저장 없이 락 해제", async () => {
+      const bundle = await buildService();
+      const ctx = setupHappyPath(bundle);
+      bundle.sessions.findOwned!.mockResolvedValue(null);
+
+      const { events, error } = await collectEvents(
+        bundle.service.streamMessage({
+          sessionId: ctx.sessionId,
+          userId: ctx.userId,
+          content: "hi",
+        }),
+      );
+
+      expect(events).toEqual([]);
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(bundle.messages.create).not.toHaveBeenCalled();
+      expect(bundle.lock.release).toHaveBeenCalledTimes(1);
     });
   });
 

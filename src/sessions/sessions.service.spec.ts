@@ -9,6 +9,8 @@ import mongoose, { Types } from "mongoose";
 
 import { Message, MessageSchema } from "../messages/schemas/message.schema";
 import { Session, SessionSchema } from "./schemas/session.schema";
+import { ContextCacheService } from "../redis/context-cache.service";
+import { SessionLockService } from "../redis/session-lock.service";
 import { SessionsService } from "./sessions.service";
 
 // ReplSet 필요. deleteOwnedWithMessages가 multi-document transaction 사용 (ADR-5).
@@ -32,7 +34,20 @@ describe("SessionsService", () => {
           { name: Message.name, schema: MessageSchema },
         ]),
       ],
-      providers: [SessionsService],
+      providers: [
+        SessionsService,
+        {
+          provide: SessionLockService,
+          useValue: {
+            acquire: jest.fn().mockResolvedValue({ key: "k", ownerId: "o" }),
+            release: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: ContextCacheService,
+          useValue: { clear: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
     }).compile();
 
     service = moduleRef.get(SessionsService);
